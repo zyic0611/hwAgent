@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧环卫 BI 分析助手</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #1677ff;
+            --bg-color: #f5f7fa;
+            --chat-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #e5e6eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            height: 95vh;
+            margin-top: 2.5vh;
+            background-color: var(--chat-bg);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            background-color: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            text-align: center;
+        }
+
+        .header h2 {
+            margin: 0;
+            color: var(--text-color);
+            font-size: 20px;
+        }
+
+        .header p {
+            margin: 5px 0 0 0;
+            color: #86909c;
+            font-size: 13px;
+        }
+
+        .chat-history {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #f9fafc;
+        }
+
+        .message {
+            display: flex;
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .bubble {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 15px;
+            line-height: 1.6;
+            word-wrap: break-word;
+            white-space: pre-wrap; /* 保持换行格式 */
+        }
+
+        .user .bubble {
+            background-color: var(--primary-color);
+            color: #ffffff;
+            border-bottom-right-radius: 2px;
+        }
+
+        .ai .bubble {
+            background-color: #ffffff;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 2px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        }
+
+        /* 动态生成的图表容器样式 */
+        .chart-container {
+            width: 100%;
+            height: 350px;
+            margin-top: 15px;
+            border-top: 1px dashed #eee;
+            padding-top: 15px;
+        }
+
+        .input-area {
+            padding: 15px 20px;
+            background-color: #ffffff;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+        }
+
+        button {
+            padding: 0 24px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background-color: #a8cbf7;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            color: #86909c;
+            font-style: italic;
+            font-size: 14px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h2>🤖 智慧环卫 BI 数据分析平台</h2>
+            <p>支持多轮对话追踪，由你的超级 Agent 提供算力支持</p>
+        </div>
+
+        <div class="chat-history" id="chatHistory">
+            <div class="message ai">
+                <div class="bubble">你好！我是环卫数据 BI 助手。你可以问我类似于：<br>“帮我分析一下北京2025年有效项目中，各项目类型的数量占比情况？”</div>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="输入你的数据分析需求，按回车键发送..." onkeypress="handleKeyPress(event)">
+            <button id="sendBtn" onclick="askQuestion()">发 送</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. 生成并固化当前会话 ID
+        const sessionId = "session_" + Math.random().toString(36).substring(2, 10);
+        let chartCounter = 0; // 用于给每个图表生成唯一 ID
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                askQuestion();
+            }
+        }
+
+        function appendMessage(role, text, id = null) {
+            const chatHistory = document.getElementById('chatHistory');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}`;
+            if (id) msgDiv.id = id;
+
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'bubble';
+            bubbleDiv.innerHTML = text; // 使用 innerHTML 以支持换行和内嵌 div
+
+            msgDiv.appendChild(bubbleDiv);
+            chatHistory.appendChild(msgDiv);
+
+            // 自动滚动到底部
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            return msgDiv;
+        }
+
+        async function askQuestion() {
+            const inputEl = document.getElementById('userInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const question = inputEl.value.trim();
+
+            if (!question) return;
+
+            // 1. 显示用户提问
+            appendMessage('user', question);
+            inputEl.value = '';
+
+            // 2. 锁定输入框，显示 AI 加载状态
+            inputEl.disabled = true;
+            sendBtn.disabled = true;
+            const loadingId = 'loading_' + Date.now();
+            appendMessage('ai', '<span class="loading">正在查询数据库并生成报告，请稍候...</span>', loadingId);
+
+            try {
+                // 3. 发送请求给你的 FastAPI 后端
+                const response = await fetch('http://127.0.0.1:8000/api/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        question: question,
+                        session_id: sessionId // 传入会话 ID 维持多轮对话
+                    })
+                });
+
+                const data = await response.json();
+
+                // 4. 移除 loading 气泡
+                document.getElementById(loadingId).remove();
+
+                // 5. 准备 AI 回复内容
+                let aiHtmlContent = data.report;
+                let currentChartId = null;
+
+                // 如果有图表数据，在气泡里预留一个图表容器
+                if (data.chart) {
+                    chartCounter++;
+                    currentChartId = 'chart_' + chartCounter;
+                    aiHtmlContent += `<div id="${currentChartId}" class="chart-container"></div>`;
+                }
+
+                // 渲染 AI 气泡
+                appendMessage('ai', aiHtmlContent);
+
+                // 6. 如果有图表，触发 ECharts 渲染
+                if (data.chart && currentChartId) {
+                    renderChart(currentChartId, data.chart);
+                }
+
+            } catch (error) {
+                document.getElementById(loadingId).remove();
+                appendMessage('ai', `❌ 请求失败，请检查 Python 后端是否在运行。\n错误信息: ${error.message}`);
+            } finally {
+                // 解锁输入框
+                inputEl.disabled = false;
+                sendBtn.disabled = false;
+                inputEl.focus();
+            }
+        }
+
+        // 渲染图表的核心逻辑
+        function renderChart(containerId, chartConfig) {
+            // 延迟一点点执行，确保 DOM 已经完全渲染
+            setTimeout(() => {
+                const chartContainer = document.getElementById(containerId);
+                if (!chartContainer) return;
+
+                // 初始化 ECharts 实例
+                const myChart = echarts.init(chartContainer);
+
+                // 将 Agent 返回的简约配置转化为 ECharts 标准配置
+                const option = {
+                    title: {
+                        text: chartConfig.title,
+                        left: 'center',
+                        textStyle: { fontSize: 16 }
+                    },
+                    tooltip: { trigger: 'item' },
+                    legend: { top: 'bottom' },
+                    dataset: { source: chartConfig.sourceData },
+                    xAxis: (chartConfig.type === 'bar' || chartConfig.type === 'line') ? { type: 'category' } : undefined,
+                    yAxis: (chartConfig.type === 'bar' || chartConfig.type === 'line') ? {} : undefined,
+                    series: [{
+                        type: chartConfig.type,
+                        // encode 告诉 ECharts 用哪个字段做 X 轴，哪个做 Y 轴
+                        encode: {
+                            x: chartConfig.dimension,
+                            y: chartConfig.metric,
+                            itemName: chartConfig.dimension,
+                            value: chartConfig.metric
+                        },
+                        // 如果是饼图，加点圆角和阴影更好看
+                        ...(chartConfig.type === 'pie' ? {
+                            radius: ['40%', '70%'],
+                            itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 }
+                        } : {})
+                    }]
+                };
+
+                myChart.setOption(option);
+
+                // 监听窗口大小变化，让图表自适应
+                window.addEventListener('resize', () => myChart.resize());
+
+                // 渲染完成后稍微滚动一下，确保图表在可视区内
+                const chatHistory = document.getElementById('chatHistory');
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+            }, 100);
+        }
+    </script>
+</body>
+</html>
